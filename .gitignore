@@ -1,0 +1,11 @@
+# Collected session data (regenerated on each run)
+odds_data/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
