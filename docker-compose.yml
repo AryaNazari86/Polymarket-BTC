@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+
+  # Phase 1 — pull 6 months of Binance data and build features.parquet
+  collect:
+    build: .
+    command: python3 collect_features.py
+    volumes:
+      - ./models:/app/models
+      - ./odds_data:/app/odds_data
+      - ./features.parquet:/app/features.parquet
+    restart: "no"
+
+  # Phase 2 — train the LightGBM + XGBoost + CatBoost ensemble
+  train:
+    build: .
+    command: python3 train.py
+    volumes:
+      - ./models:/app/models
+      - ./features.parquet:/app/features.parquet
+    restart: "no"
+
+  # Phase 3 — ML signal bot (runs forever, needs trained models/)
+  signal:
+    build: .
+    command: python3 signal_bot.py
+    volumes:
+      - ./models:/app/models
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  # Combined signal bot — Polymarket odds momentum + BTC confirmation
+  # Dashboard: http://localhost:8080
+  combined:
+    build: .
+    command: python3 combined_signal_bot.py
+    volumes:
+      - ./odds_data:/app/odds_data
+      - ./dashboard.html:/app/dashboard.html
+    ports:
+      - "8080:8080"
+    stdin_open: true
+    tty: true
+    restart: unless-stopped

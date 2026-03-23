@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARYA — Bot Architecture</title>
+<style>
+:root {
+  --bg:     #07070f;
+  --bg2:    #0e0e1c;
+  --bg3:    #13131f;
+  --border: #1c1c30;
+  --violet: #a855f7;
+  --vdim:   #6b21a8;
+  --orange: #f59e0b;
+  --green:  #10b981;
+  --red:    #ef4444;
+  --cyan:   #06b6d4;
+  --blue:   #3b82f6;
+  --white:  #f1f5f9;
+  --gray:   #64748b;
+  --dim:    #334155;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: 'Courier New', Consolas, monospace;
+  min-height: 100vh;
+  padding: 32px 24px;
+}
+
+/* ── Title ─────────────────────────────────────────────── */
+.title-block {
+  text-align: center;
+  margin-bottom: 40px;
+}
+.title-main {
+  font-size: 36px;
+  font-weight: bold;
+  letter-spacing: 8px;
+  color: var(--violet);
+  text-shadow: 0 0 40px rgba(168,85,247,0.5);
+}
+.title-sub {
+  font-size: 13px;
+  color: var(--gray);
+  letter-spacing: 3px;
+  margin-top: 8px;
+}
+
+/* ── Section labels ─────────────────────────────────────── */
+.layer-label {
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+/* ── Row layout ─────────────────────────────────────────── */
+.row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.row.center { align-items: center; }
+
+/* ── Connector arrows ───────────────────────────────────── */
+.arrow-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 0 6px;
+}
+.arrow-down {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+  flex: 1;
+  max-width: 180px;
+}
+.arrow-down span { font-size: 9px; letter-spacing: 1px; color: var(--dim); margin-bottom: 2px; }
+.arrow-single {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--dim);
+  margin: 2px 0 4px;
+}
+
+/* ── Box ────────────────────────────────────────────────── */
+.box {
+  border-radius: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  flex: 1;
+  min-width: 0;
+}
+.box.violet { border-color: var(--violet); background: rgba(168,85,247,0.06); }
+.box.orange { border-color: var(--orange); background: rgba(245,158,11,0.06); }
+.box.green  { border-color: var(--green);  background: rgba(16,185,129,0.06); }
+.box.cyan   { border-color: var(--cyan);   background: rgba(6,182,212,0.06); }
+.box.blue   { border-color: var(--blue);   background: rgba(59,130,246,0.06); }
+.box.red    { border-color: var(--red);    background: rgba(239,68,68,0.06); }
+
+.box-icon { font-size: 20px; margin-bottom: 6px; }
+.box-title {
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.box.violet .box-title { color: var(--violet); }
+.box.orange .box-title { color: var(--orange); }
+.box.green  .box-title { color: var(--green); }
+.box.cyan   .box-title { color: var(--cyan); }
+.box.blue   .box-title { color: var(--blue); }
+.box.red    .box-title { color: var(--red); }
+
+.box-detail {
+  font-size: 10px;
+  color: var(--gray);
+  line-height: 1.7;
+}
+.box-detail .tag {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  margin-right: 3px;
+  margin-bottom: 2px;
+}
+.box-detail .t-violet { background: rgba(168,85,247,0.2); color: var(--violet); }
+.box-detail .t-orange { background: rgba(245,158,11,0.2); color: var(--orange); }
+.box-detail .t-green  { background: rgba(16,185,129,0.2); color: var(--green); }
+.box-detail .t-cyan   { background: rgba(6,182,212,0.2);  color: var(--cyan); }
+.box-detail .t-blue   { background: rgba(59,130,246,0.2); color: var(--blue); }
+.box-detail .t-red    { background: rgba(239,68,68,0.2);  color: var(--red); }
+.box-detail .t-gray   { background: rgba(100,116,139,0.2); color: var(--gray); }
+
+.endpoint {
+  font-size: 9px;
+  color: var(--cyan);
+  font-family: monospace;
+  margin-top: 4px;
+  word-break: break-all;
+  opacity: 0.8;
+}
+
+/* ── Timeline ───────────────────────────────────────────── */
+.timeline-wrap {
+  margin: 8px 0;
+  padding: 0;
+}
+.tl-bar-wrap {
+  position: relative;
+  height: 52px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.tl-seg {
+  position: absolute;
+  top: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.tl-watch  { left: 0%;    width: 25%;  background: rgba(168,85,247,0.15); border-right: 1px solid rgba(168,85,247,0.4); color: var(--violet); }
+.tl-signal { left: 25%;   width: 2%;   background: rgba(245,158,11,0.4);  border-right: 1px solid var(--orange); color: var(--orange); }
+.tl-buy    { left: 26.7%; width: 1.3%; background: rgba(16,185,129,0.5); border-right: 1px solid var(--green); color: #000; font-size: 9px; }
+.tl-hold   { left: 28%;   width: 32%;  background: rgba(16,185,129,0.08); border-right: 1px solid rgba(16,185,129,0.3); color: var(--green); }
+.tl-sell   { left: 60%;   width: 1.5%; background: rgba(239,68,68,0.5);  border-right: 1px solid var(--red); color: #000; font-size: 9px; }
+.tl-dead   { left: 61.5%; width: 38.5%;background: rgba(100,116,139,0.05); color: var(--dim); }
+
+.tl-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 9px;
+  color: var(--dim);
+  padding: 0 4px;
+}
+.tl-marker { text-align: center; }
+.tl-marker.violet { color: var(--violet); }
+.tl-marker.orange { color: var(--orange); }
+.tl-marker.green  { color: var(--green); }
+.tl-marker.red    { color: var(--red); }
+.tl-marker.gray   { color: var(--dim); }
+
+/* ── Signal decision tree ───────────────────────────────── */
+.decision-tree {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.dt-step {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  position: relative;
+}
+.dt-step::after {
+  content: '▶';
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--dim);
+  font-size: 10px;
+  z-index: 2;
+}
+.dt-step:last-child::after { display: none; }
+.dt-num {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--vdim);
+  color: var(--white);
+  font-size: 10px;
+  font-weight: bold;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 6px;
+}
+.dt-title { font-size: 11px; font-weight: bold; color: var(--violet); margin-bottom: 4px; }
+.dt-body  { font-size: 10px; color: var(--gray); line-height: 1.6; }
+.dt-result { font-size: 10px; font-weight: bold; margin-top: 6px; }
+.dt-result.go   { color: var(--green); }
+.dt-result.skip { color: var(--red); }
+
+/* ── Output boxes ───────────────────────────────────────── */
+.output-row {
+  display: flex;
+  gap: 12px;
+}
+.output-box {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+}
+.output-box .icon  { font-size: 28px; margin-bottom: 8px; }
+.output-box .otitle { font-size: 12px; font-weight: bold; margin-bottom: 6px; }
+.output-box .odesc  { font-size: 10px; color: var(--gray); line-height: 1.7; }
+
+/* ── Data flow feedback ─────────────────────────────────── */
+.feedback-bar {
+  margin: 8px 0;
+  padding: 10px 16px;
+  background: rgba(245,158,11,0.05);
+  border: 1px dashed rgba(245,158,11,0.3);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 10px;
+  color: var(--gray);
+}
+.fb-arrow { color: var(--orange); font-size: 16px; }
+.fb-label { color: var(--orange); font-weight: bold; font-size: 10px; letter-spacing: 1px; }
+
+/* ── Stats strip ────────────────────────────────────────── */
+.stats-strip {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.stat-pill {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  text-align: center;
+}
+.stat-val  { font-size: 20px; font-weight: bold; }
+.stat-lbl  { font-size: 9px; color: var(--dim); margin-top: 3px; letter-spacing: 1px; text-transform: uppercase; }
+
+/* ── Divider ────────────────────────────────────────────── */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 20px 0;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Title ──────────────────────────────────────────────────────────────── -->
+<div class="title-block">
+  <div class="title-main">▲ ARYA BOT</div>
+  <div class="title-sub">Technical Architecture — Polymarket BTC 5-Min Signal System</div>
+</div>
+
+<!-- ── Empirical Results Strip ─────────────────────────────────────────────── -->
+<div class="stats-strip" style="margin-bottom:28px">
+  <div class="stat-pill">
+    <div class="stat-val" style="color:var(--violet)">s75</div>
+    <div class="stat-lbl">Optimal Signal Check</div>
+  </div>
+  <div class="stat-pill">
+    <div class="stat-val" style="color:var(--green)">65%</div>
+    <div class="stat-lbl">Win Rate (BTC confirmed)</div>
+  </div>
+  <div class="stat-pill">
+    <div class="stat-val" style="color:var(--orange)">+7.1¢</div>
+    <div class="stat-lbl">Avg Profit / Trade</div>
+  </div>
+  <div class="stat-pill">
+    <div class="stat-val" style="color:var(--cyan)">s80→s180</div>
+    <div class="stat-lbl">Hold Window</div>
+  </div>
+  <div class="stat-pill">
+    <div class="stat-val" style="color:var(--red)">30%</div>
+    <div class="stat-lbl">Win Without BTC Confirm</div>
+  </div>
+  <div class="stat-pill">
+    <div class="stat-val" style="color:var(--blue)">121</div>
+    <div class="stat-lbl">Windows Analyzed</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- LAYER 1: DATA SOURCES                                                       -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="layer-label">① External Data Sources</div>
+<div class="row">
+
+  <div class="box violet" style="max-width:220px">
+    <div class="box-icon">🎯</div>
+    <div class="box-title">Polymarket Gamma API</div>
+    <div class="box-detail">
+      Market discovery &amp; token lookup.<br>
+      Finds the live 5-min BTC window<br>
+      and its two CLOB token IDs.<br><br>
+      <span class="tag t-violet">No Auth</span>
+      <span class="tag t-gray">REST / JSON</span>
+      <div class="endpoint">gamma-api.polymarket.com</div>
+      <div class="endpoint">/events?slug=btc-updown-5m-{window_start}</div>
+    </div>
+  </div>
+
+  <div class="box cyan" style="max-width:220px">
+    <div class="box-icon">💹</div>
+    <div class="box-title">Polymarket CLOB API</div>
+    <div class="box-detail">
+      Live odds prices — the exact "Buy<br>
+      Up X¢ / Buy Down X¢" values<br>
+      the UI displays. Polled every second.<br><br>
+      <span class="tag t-cyan">Midpoint</span>
+      <span class="tag t-gray">= (bid+ask)/2</span>
+      <div class="endpoint">clob.polymarket.com</div>
+      <div class="endpoint">/midpoint?token_id={id}</div>
+    </div>
+  </div>
+
+  <div class="box orange" style="max-width:220px">
+    <div class="box-icon">₿</div>
+    <div class="box-title">Binance REST API</div>
+    <div class="box-detail">
+      Live BTC/USDT spot price + 1-min<br>
+      candles (last 62) + 1-day candles<br>
+      (last 30 days) for macro context.<br><br>
+      <span class="tag t-orange">No Auth</span>
+      <span class="tag t-gray">WebSocket alt available</span>
+      <div class="endpoint">api.binance.com/api/v3</div>
+      <div class="endpoint">/klines · /ticker/price</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Arrows down -->
+<div class="arrow-row" style="max-width:700px;margin:0 auto">
+  <div class="arrow-down"><span>token discovery</span>↓</div>
+  <div class="arrow-down"><span>1-second poll</span>↓</div>
+  <div class="arrow-down"><span>price context</span>↓</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- LAYER 2: INGESTION                                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="layer-label">② Ingestion &amp; Window Engine</div>
+<div class="row">
+
+  <div class="box blue" style="max-width:320px">
+    <div class="box-icon">🪟</div>
+    <div class="box-title">Window Engine</div>
+    <div class="box-detail">
+      Computes the current 5-minute boundary from Unix time.<br><br>
+      <span class="tag t-blue">window_start</span> = <code style="color:var(--cyan)">(now // 300) * 300</code><br>
+      <span class="tag t-blue">window_end</span>   = <code style="color:var(--cyan)">window_start + 300</code><br><br>
+      Slug → <code style="color:var(--violet)">btc-updown-5m-{window_start}</code><br>
+      Retries ±1 window for boundary timing.<br>
+      Validates: <span class="tag t-green">active=True</span> <span class="tag t-red">closed=False</span>
+    </div>
+  </div>
+
+  <div class="box green" style="max-width:320px">
+    <div class="box-icon">⏱</div>
+    <div class="box-title">Tick Collection Loop</div>
+    <div class="box-detail">
+      Polls price every second from <strong style="color:var(--violet)">s0</strong> to <strong style="color:var(--violet)">s75</strong>.<br>
+      Stores: up_cents, down_cents, btc_price per tick.<br><br>
+      <span class="tag t-green">s0</span> baseline locked on first valid read<br>
+      <span class="tag t-orange">up_slope</span> = up_now − up_s0 (running delta)<br>
+      <span class="tag t-orange">btc_slope</span> = btc_now − btc_s0<br><br>
+      Sparse ticks every 30s from s85→s175 (still alive check).
+    </div>
+  </div>
+
+  <div class="box orange" style="max-width:220px">
+    <div class="box-icon">📊</div>
+    <div class="box-title">Macro Context</div>
+    <div class="box-detail">
+      Fetched once at window start.<br><br>
+      <span class="tag t-orange">15-min %Δ</span><br>
+      <span class="tag t-orange">30-min %Δ</span><br>
+      <span class="tag t-orange">60-min %Δ</span><br>
+      <span class="tag t-cyan">EMA-20</span> position (above/below)<br>
+      <span class="tag t-blue">30-day trend</span> bull/bear context<br><br>
+      Informs signal confidence rating.
+    </div>
+  </div>
+
+</div>
+
+<!-- Arrow -->
+<div class="arrow-single">↓ <span style="font-size:9px;color:var(--dim)"> features ready at s75</span></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- 5-MIN TIMELINE                                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="layer-label">③ 5-Minute Window Timeline</div>
+<div class="timeline-wrap">
+  <div class="tl-bar-wrap">
+    <div class="tl-seg tl-watch">◉ WATCH PHASE</div>
+    <div class="tl-seg tl-signal" title="s75: evaluate">▲</div>
+    <div class="tl-seg tl-buy" title="s80: buy">BUY</div>
+    <div class="tl-seg tl-hold">⟵ HOLD ⟶</div>
+    <div class="tl-seg tl-sell" title="s180: sell">SELL</div>
+    <div class="tl-seg tl-dead">— DEAD ZONE (odds locked &gt;80%) —</div>
+  </div>
+  <div class="tl-labels">
+    <div class="tl-marker violet">s0<br>Open<br>~50¢</div>
+    <div class="tl-marker gray">s30<br>Old rule<br>(56%)</div>
+    <div class="tl-marker orange">s75<br>★ Signal<br>(65%)</div>
+    <div class="tl-marker green">s80<br>BUY<br>entry</div>
+    <div class="tl-marker gray">s120<br>40%<br>extreme</div>
+    <div class="tl-marker red">s180<br>★ SELL<br>exit</div>
+    <div class="tl-marker gray">s210<br>70%<br>extreme</div>
+    <div class="tl-marker gray">s283<br>Old sell<br>83% ext.</div>
+    <div class="tl-marker gray">s300<br>Window<br>closes</div>
+  </div>
+</div>
+
+<div style="font-size:9px;color:var(--dim);text-align:center;margin:6px 0 16px">
+  "extreme" = odds above 75¢ or below 25¢ &nbsp;|&nbsp; at s283 (old sell), 83% of windows are already extreme — edge is gone
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- LAYER 3: SIGNAL ENGINE                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="layer-label">④ Signal Decision Engine (fires at s75)</div>
+<div class="decision-tree" style="margin-bottom:8px">
+
+  <div class="dt-step">
+    <div class="dt-num">1</div>
+    <div class="dt-title">Drift Check</div>
+    <div class="dt-body">
+      Measure how far Up odds moved<br>from s0 to s75.<br><br>
+      <code style="color:var(--violet)">drift = up_75 − up_0</code><br><br>
+      Threshold: <strong style="color:var(--orange)">|drift| &gt; 4¢</strong><br>
+      (empirically optimal from 121 windows)
+    </div>
+    <div class="dt-result skip">✗ SKIP if |drift| ≤ 4¢</div>
+  </div>
+
+  <div class="dt-step">
+    <div class="dt-num">2</div>
+    <div class="dt-title">Extreme Filter</div>
+    <div class="dt-body">
+      Don't enter if odds already moved<br>too far — edge is gone.<br><br>
+      Skip if at s75:<br>
+      <code style="color:var(--red)">up &gt; 70¢</code> (crowd all-in Up)<br>
+      <code style="color:var(--red)">up &lt; 30¢</code> (crowd all-in Down)
+    </div>
+    <div class="dt-result skip">✗ SKIP if already extreme</div>
+  </div>
+
+  <div class="dt-step">
+    <div class="dt-num">3</div>
+    <div class="dt-title">BTC Confirmation</div>
+    <div class="dt-body">
+      The critical filter. BTC must move<br>in the same direction as odds.<br><br>
+      <span style="color:var(--green)">With BTC:</span> 65% win, avg +7.1¢<br>
+      <span style="color:var(--red)">Without:</span> 30% win, avg −7.0¢<br><br>
+      <code style="color:var(--cyan)">btc_drift = btc_60 − btc_0</code>
+    </div>
+    <div class="dt-result skip">✗ SKIP if BTC opposes drift</div>
+  </div>
+
+  <div class="dt-step">
+    <div class="dt-num">4</div>
+    <div class="dt-title">Direction</div>
+    <div class="dt-body">
+      Momentum-following strategy.<br>Buy whichever side is trending.<br><br>
+      <span style="color:var(--green)">drift &gt; 0</span> → BUY UP<br>
+      (Up odds keep rising)<br><br>
+      <span style="color:var(--red)">drift &lt; 0</span> → BUY DOWN<br>
+      (Down odds keep rising)
+    </div>
+    <div class="dt-result go">★ SIGNAL FIRES at s75</div>
+  </div>
+
+</div>
+
+<!-- Arrow -->
+<div class="arrow-single">↓</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- LAYER 4: EXECUTION                                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="layer-label">⑤ Execution</div>
+<div class="row" style="margin-bottom:8px">
+  <div class="box green" style="max-width:260px">
+    <div class="box-icon">⚡</div>
+    <div class="box-title">BUY at s80</div>
+    <div class="box-detail">
+      5 seconds after signal fires (s75→s80).<br>
+      Small buffer to confirm momentum.<br><br>
+      Fetches live midpoint price from<br>
+      Polymarket CLOB at exact s80.<br>
+      Records <code style="color:var(--cyan)">buy_price</code> for P&amp;L calc.
+    </div>
+  </div>
+  <div class="box" style="max-width:260px;border-color:var(--dim);flex:0.4;text-align:center;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;font-size:11px;color:var(--gray)">
+    <div style="font-size:28px">⏳</div>
+    HOLD<br>
+    <span style="font-size:22px;font-weight:bold;color:var(--orange)">100s</span><br>
+    monitor every 30s
+  </div>
+  <div class="box red" style="max-width:260px">
+    <div class="box-icon">💰</div>
+    <div class="box-title">SELL at s180</div>
+    <div class="box-detail">
+      Exit at exactly s180 (3 min in).<br>
+      Before 57% of windows go extreme.<br><br>
+      <code style="color:var(--cyan)">profit = sell_price − buy_price</code><br><br>
+      Win: sell higher than bought.<br>
+      Max drawdown bounded by s180 exit.
+    </div>
+  </div>
+</div>
+
+<!-- Arrow -->
+<div class="arrow-single">↓</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- LAYER 5: OUTPUT                                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="layer-label">⑥ Output Layer</div>
+<div class="output-row" style="margin-bottom:8px">
+
+  <div class="output-box" style="border-color:var(--violet)">
+    <div class="icon">🖥</div>
+    <div class="otitle" style="color:var(--violet)">Terminal Output</div>
+    <div class="odesc">
+      Real-time tick-by-tick printing.<br>
+      Per-second: Up¢, Down¢, BTC, slopes.<br>
+      Decision block at s75.<br>
+      ⚡ BUY and SELL flash alerts.<br>
+      Window grading + scorecard.
+    </div>
+  </div>
+
+  <div class="output-box" style="border-color:var(--cyan)">
+    <div class="icon">📡</div>
+    <div class="otitle" style="color:var(--cyan)">HTTP Dashboard :8080</div>
+    <div class="odesc">
+      Python HTTPServer in background thread.<br>
+      Serves <code>dashboard.html</code> + <code>/api/state</code>.<br>
+      Browser polls JSON every 800ms.<br>
+      Chart.js real-time odds &amp; BTC charts.<br>
+      Signal box, scorecard, tick log.
+    </div>
+  </div>
+
+  <div class="output-box" style="border-color:var(--orange)">
+    <div class="icon">💾</div>
+    <div class="otitle" style="color:var(--orange)">Live Training CSV</div>
+    <div class="odesc">
+      Every window appended to<br>
+      <code>odds_data/live_training.csv</code>.<br>
+      Same schema as session files.<br>
+      Grows over time — feeds back into<br>
+      threshold recalibration every 10 wins.
+    </div>
+  </div>
+
+</div>
+
+<!-- Feedback loop -->
+<div class="feedback-bar">
+  <span class="fb-arrow">↺</span>
+  <span class="fb-label">LEARNING LOOP</span>
+  <span>Every 10 windows: re-analyze accumulated CSV data → auto-update drift threshold, buy/sell seconds, BTC confirmation requirement based on what's actually working</span>
+  <span class="fb-arrow">→ Signal Engine</span>
+</div>
+
+<div class="divider"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- STRATEGY PHILOSOPHY                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="layer-label">⑦ Strategy Philosophy</div>
+<div class="row">
+  <div class="box" style="max-width:100%;border-color:var(--vdim)">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;padding:4px">
+      <div>
+        <div style="color:var(--violet);font-weight:bold;font-size:11px;margin-bottom:8px">🤖 What Other Bots Do</div>
+        <div style="font-size:10px;color:var(--gray);line-height:1.8">
+          Algorithmic bots analyze BTC OHLCV,<br>
+          momentum indicators (RSI, EMA, MACD)<br>
+          and historical patterns to predict<br>
+          whether BTC closes UP or DOWN in<br>
+          the 5-minute window.<br><br>
+          They bid up Polymarket odds based<br>
+          on their model's confidence score.
+        </div>
+      </div>
+      <div>
+        <div style="color:var(--orange);font-weight:bold;font-size:11px;margin-bottom:8px">📈 What ARYA Does</div>
+        <div style="font-size:10px;color:var(--gray);line-height:1.8">
+          ARYA doesn't predict BTC price.<br><br>
+          It watches <em>what those bots predict</em><br>
+          by observing how odds drift in the<br>
+          first 75 seconds.<br><br>
+          If odds are moving decisively in one<br>
+          direction AND BTC confirms it → ride<br>
+          the wave. Sell before it peaks.
+        </div>
+      </div>
+      <div>
+        <div style="color:var(--green);font-weight:bold;font-size:11px;margin-bottom:8px">💡 Why This Works</div>
+        <div style="font-size:10px;color:var(--gray);line-height:1.8">
+          Odds momentum is self-reinforcing.<br>
+          Rising Up odds → more bots buy Up<br>
+          → odds rise further → peak near s180.<br><br>
+          We capture the middle of that move:<br>
+          enter at s80 (momentum confirmed),<br>
+          exit at s180 (before crowd locks in).<br><br>
+          BTC as filter eliminates false signals.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;margin-top:28px;font-size:10px;color:var(--dim);letter-spacing:2px">
+  ARYA · Built for Arya Nazari · Powered by Claude · 2026
+</div>
+
+</body>
+</html>

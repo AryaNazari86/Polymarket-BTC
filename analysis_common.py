@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -46,9 +47,16 @@ def load_all_data(odds_dir: Path) -> pd.DataFrame:
         df = pd.read_csv(csv_path)
         missing = REQUIRED_COLUMNS - set(df.columns)
         if missing:
-            raise ValueError(f"{csv_path.name} missing required columns: {sorted(missing)}")
+            # Skip non-collector csvs (for example analysis exports) in odds_data/.
+            continue
         df["source_file"] = csv_path.name
         frames.append(df)
+
+    if not frames:
+        raise ValueError(
+            f"No collector CSV files with required columns found in {odds_dir}. "
+            "Expected raw files with window_id/second_in_window/up_cents/down_cents/btc_price_usd/market_slug."
+        )
 
     data = pd.concat(frames, ignore_index=True)
     data = _coerce_numeric(data, ["second_in_window", "up_cents", "down_cents", "btc_price_usd"])
@@ -223,8 +231,9 @@ def build_feature_dataset(
         if not required_points.issubset(set(window.seconds)):
             continue
 
-        early = window.up[window.up.index <= target_buy_second]
-        if early.empty:
+        early_up = window.up[window.up.index <= target_buy_second]
+        early_btc = window.btc[window.btc.index <= target_buy_second]
+        if early_up.empty or early_btc.empty:
             continue
 
         up_0 = float(window.up.loc[0])
@@ -238,13 +247,19 @@ def build_feature_dataset(
         up_slope = (up_30 - up_0) / 30.0
         btc_slope = (btc_30 - btc_0) / 30.0
 
-        crossed_below_45 = bool((early < 45.0).any())
-        crossed_above_55 = bool((early > 55.0).any())
+        crossed_below_45 = bool((early_up < 45.0).any())
+        crossed_above_55 = bool((early_up > 55.0).any())
 
         spread_30 = float(window.up.loc[30] - window.down.loc[30])
 
         up_profit = float(window.up.loc[target_sell_second] - window.up.loc[target_buy_second])
         down_profit = float(window.down.loc[target_sell_second] - window.down.loc[target_buy_second])
+
+        up_volatility = float(early_up.std(ddof=0)) if len(early_up) > 1 else 0.0
+        btc_volatility = float(early_btc.std(ddof=0)) if len(early_btc) > 1 else 0.0
+        up_range_early = float(early_up.max() - early_up.min()) if len(early_up) > 0 else 0.0
+        btc_change_0_buy = float(window.btc.loc[target_buy_second] - btc_0)
+        up_change_10_30 = float(up_30 - up_10)
 
         feature_rows.append(
             {
@@ -270,6 +285,11 @@ def build_feature_dataset(
                 "crossed_above_55_before_buy": crossed_above_55,
                 "spread_30": spread_30,
                 "spread_30_bucket": _bucket_spread(spread_30),
+                "up_volatility_0_buy": up_volatility,
+                "btc_volatility_0_buy": btc_volatility,
+                "up_range_0_buy": up_range_early,
+                "btc_change_0_buy": btc_change_0_buy,
+                "up_change_10_30": up_change_10_30,
                 "up_profit_c": up_profit,
                 "down_profit_c": down_profit,
                 "up_win": up_profit > 0.0,
@@ -281,6 +301,44 @@ def build_feature_dataset(
         raise ValueError("No windows contain required points for Step 3 feature extraction.")
 
     return pd.DataFrame(feature_rows).sort_values("window_ts").reset_index(drop=True)
+
+
+def _wilson_lower_bound(wins: int, n: int, z: float = 1.96) -> float:
+    if n == 0:
+        return 0.0
+    p = wins / float(n)
+    denom = 1.0 + (z * z) / n
+    center = p + (z * z) / (2.0 * n)
+    margin = z * math.sqrt((p * (1.0 - p) + (z * z) / (4.0 * n)) / n)
+    return (center - margin) / denom
+
+
+def _add_pattern_stats(grouped: pd.DataFrame) -> pd.DataFrame:
+    grouped["up_win_rate_pct"] = grouped["up_win_rate"] * 100.0
+    grouped["down_win_rate_pct"] = grouped["down_win_rate"] * 100.0
+    grouped["best_win_rate_pct"] = grouped[["up_win_rate_pct", "down_win_rate_pct"]].max(axis=1)
+    grouped["best_side"] = grouped.apply(
+        lambda row: "Up" if row["up_win_rate_pct"] >= row["down_win_rate_pct"] else "Down", axis=1
+    )
+    grouped["best_avg_profit_c"] = grouped.apply(
+        lambda row: row["avg_up_profit_c"] if row["best_side"] == "Up" else row["avg_down_profit_c"],
+        axis=1,
+    )
+    grouped["best_profit_std_c"] = grouped.apply(
+        lambda row: row["std_up_profit_c"] if row["best_side"] == "Up" else row["std_down_profit_c"],
+        axis=1,
+    ).fillna(0.0)
+    grouped["best_profit_stderr_c"] = grouped["best_profit_std_c"] / grouped["count_windows"].pow(0.5)
+    grouped["best_profit_lb95_c"] = grouped["best_avg_profit_c"] - (1.96 * grouped["best_profit_stderr_c"])
+
+    def _row_win_lb(row: pd.Series) -> float:
+        wr = row["up_win_rate"] if row["best_side"] == "Up" else row["down_win_rate"]
+        wins = int(round(float(wr) * int(row["count_windows"])))
+        return _wilson_lower_bound(wins, int(row["count_windows"]), z=1.96) * 100.0
+
+    grouped["best_win_lb95_pct"] = grouped.apply(_row_win_lb, axis=1)
+    grouped["robust_score"] = grouped["best_profit_lb95_c"] * (grouped["best_win_lb95_pct"] / 100.0)
+    return grouped
 
 
 def build_pattern_breakdown(features_df: pd.DataFrame) -> pd.DataFrame:
@@ -304,18 +362,15 @@ def build_pattern_breakdown(features_df: pd.DataFrame) -> pd.DataFrame:
             down_win_rate=("down_win", "mean"),
             avg_up_profit_c=("up_profit_c", "mean"),
             avg_down_profit_c=("down_profit_c", "mean"),
+            std_up_profit_c=("up_profit_c", "std"),
+            std_down_profit_c=("down_profit_c", "std"),
         )
         .reset_index()
     )
 
-    grouped["up_win_rate_pct"] = grouped["up_win_rate"] * 100.0
-    grouped["down_win_rate_pct"] = grouped["down_win_rate"] * 100.0
-    grouped["best_win_rate_pct"] = grouped[["up_win_rate_pct", "down_win_rate_pct"]].max(axis=1)
-    grouped["best_side"] = grouped.apply(
-        lambda row: "Up" if row["up_win_rate_pct"] >= row["down_win_rate_pct"] else "Down", axis=1
-    )
+    grouped = _add_pattern_stats(grouped)
     grouped = grouped.sort_values(
-        ["best_win_rate_pct", "count_windows", "avg_up_profit_c", "avg_down_profit_c"],
+        ["robust_score", "count_windows", "best_win_rate_pct", "best_avg_profit_c"],
         ascending=[False, False, False, False],
     ).reset_index(drop=True)
 
@@ -338,6 +393,67 @@ def build_pattern_breakdown(features_df: pd.DataFrame) -> pd.DataFrame:
         "avg_down_profit_c",
         "best_side",
         "best_win_rate_pct",
+        "best_avg_profit_c",
+        "best_profit_lb95_c",
+        "best_win_lb95_pct",
+        "robust_score",
+    ]
+    return grouped[cols]
+
+
+def build_coarse_pattern_breakdown(features_df: pd.DataFrame) -> pd.DataFrame:
+    # Coarser grouping gives larger sample sizes and more tradable rules.
+    pattern_cols = [
+        "up_slope_dir",
+        "btc_slope_dir",
+        "crossed_below_45_before_buy",
+        "crossed_above_55_before_buy",
+        "spread_30_bucket",
+        "up_30_bucket",
+    ]
+
+    grouped = (
+        features_df.groupby(pattern_cols, dropna=False)
+        .agg(
+            count_windows=("window_key", "count"),
+            up_win_rate=("up_win", "mean"),
+            down_win_rate=("down_win", "mean"),
+            avg_up_profit_c=("up_profit_c", "mean"),
+            avg_down_profit_c=("down_profit_c", "mean"),
+            std_up_profit_c=("up_profit_c", "std"),
+            std_down_profit_c=("down_profit_c", "std"),
+        )
+        .reset_index()
+    )
+
+    grouped = _add_pattern_stats(grouped)
+    grouped = grouped.sort_values(
+        ["robust_score", "count_windows", "best_win_rate_pct", "best_avg_profit_c"],
+        ascending=[False, False, False, False],
+    ).reset_index(drop=True)
+
+    grouped["feature_pattern"] = grouped.apply(
+        lambda row: (
+            f"up_slope={row['up_slope_dir']}, btc_slope={row['btc_slope_dir']}, "
+            f"below45={bool(row['crossed_below_45_before_buy'])}, above55={bool(row['crossed_above_55_before_buy'])}, "
+            f"spread30={row['spread_30_bucket']}, up30={row['up_30_bucket']}"
+        ),
+        axis=1,
+    )
+
+    cols = [
+        "feature_pattern",
+        "count_windows",
+        "up_win_rate_pct",
+        "down_win_rate_pct",
+        "avg_up_profit_c",
+        "avg_down_profit_c",
+        "best_side",
+        "best_win_rate_pct",
+        "best_avg_profit_c",
+        "best_profit_lb95_c",
+        "best_win_lb95_pct",
+        "robust_score",
     ]
     return grouped[cols]
 
@@ -347,13 +463,9 @@ def pick_best_rule(pattern_df: pd.DataFrame, min_windows: int = 5) -> Optional[p
     if eligible.empty:
         return None
 
-    eligible["best_avg_profit_c"] = eligible.apply(
-        lambda row: row["avg_up_profit_c"] if row["best_side"] == "Up" else row["avg_down_profit_c"], axis=1
-    )
-
     eligible = eligible.sort_values(
-        ["best_win_rate_pct", "best_avg_profit_c", "count_windows"],
-        ascending=[False, False, False],
+        ["robust_score", "best_profit_lb95_c", "best_win_lb95_pct", "count_windows"],
+        ascending=[False, False, False, False],
     ).reset_index(drop=True)
 
     return eligible.iloc[0]

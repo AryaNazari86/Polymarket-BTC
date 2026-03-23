@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARYA — Signal Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:     #080810;
+  --bg2:    #0f0f1a;
+  --bg3:    #14141f;
+  --border: #1e1e30;
+  --violet: #9b59b6;
+  --vbright:#b06bff;
+  --orange: #e8a020;
+  --green:  #2ecc71;
+  --red:    #ff5252;
+  --cyan:   #00d4ff;
+  --white:  #f0f0f0;
+  --gray:   #888;
+  --dim:    #444;
+  --yellow: #f1c40f;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 13px;
+  min-height: 100vh;
+}
+
+/* ── Header ─────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+.logo {
+  font-size: 26px;
+  font-weight: bold;
+  color: var(--vbright);
+  letter-spacing: 6px;
+  text-shadow: 0 0 30px rgba(176,107,255,0.6);
+  min-width: 100px;
+}
+.header-center {
+  flex: 1;
+  text-align: center;
+}
+.btc-price {
+  font-size: 32px;
+  font-weight: bold;
+  color: var(--orange);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+}
+.btc-change {
+  font-size: 11px;
+  margin-top: 2px;
+  color: var(--gray);
+}
+.header-right {
+  text-align: right;
+  min-width: 180px;
+}
+.window-label {
+  font-size: 15px;
+  color: var(--cyan);
+  font-weight: bold;
+}
+.status-line {
+  font-size: 11px;
+  color: var(--gray);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 1.4s infinite;
+}
+.dot.watching { background: var(--orange); }
+.dot.signal   { background: var(--red); }
+.dot.holding  { background: var(--green); }
+.dot.waiting  { background: var(--dim); animation: none; }
+.dot.grading  { background: var(--yellow); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* ── Progress bar ───────────────────────────────────── */
+.progress-wrap {
+  position: relative;
+  height: 28px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  overflow: hidden;
+}
+.progress-track {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--vbright) 0%, var(--orange) 100%);
+  transition: width 0.9s linear;
+  opacity: 0.25;
+}
+.progress-labels {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--dim);
+}
+.progress-labels .mark { color: var(--gray); }
+.progress-labels .mark.active { color: var(--yellow); font-weight: bold; }
+.progress-second {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--white);
+}
+.countdown-pill {
+  background: rgba(176,107,255,0.15);
+  border: 1px solid var(--vbright);
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: var(--vbright);
+  font-weight: bold;
+}
+.countdown-pill.buy  { background: rgba(46,204,113,0.15); border-color: var(--green); color: var(--green); }
+.countdown-pill.sell { background: rgba(255,82,82,0.15);  border-color: var(--red);   color: var(--red); }
+
+/* ── Main layout ────────────────────────────────────── */
+.main {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 10px;
+  padding: 10px;
+}
+
+/* ── Panel ──────────────────────────────────────────── */
+.panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+}
+.ptitle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+/* ── Signal box ─────────────────────────────────────── */
+.signal-box {
+  border-radius: 6px;
+  padding: 14px 12px;
+  text-align: center;
+  margin-bottom: 10px;
+  transition: all 0.3s;
+  border: 2px solid var(--dim);
+}
+.signal-box.buy-down {
+  border-color: var(--red);
+  background: rgba(255,82,82,0.07);
+  box-shadow: 0 0 24px rgba(255,82,82,0.15);
+  animation: glow-red 2s infinite;
+}
+.signal-box.buy-up {
+  border-color: var(--green);
+  background: rgba(46,204,113,0.07);
+  box-shadow: 0 0 24px rgba(46,204,113,0.15);
+  animation: glow-green 2s infinite;
+}
+.signal-box.stay-out {
+  border-color: var(--dim);
+  background: rgba(68,68,68,0.08);
+}
+.signal-box.waiting {
+  border-color: var(--vbright);
+  background: rgba(176,107,255,0.05);
+}
+@keyframes glow-red   { 0%,100%{box-shadow:0 0 24px rgba(255,82,82,0.15)}  50%{box-shadow:0 0 40px rgba(255,82,82,0.35)} }
+@keyframes glow-green { 0%,100%{box-shadow:0 0 24px rgba(46,204,113,0.15)} 50%{box-shadow:0 0 40px rgba(46,204,113,0.35)} }
+
+.sig-action {
+  font-size: 26px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+.buy-down .sig-action { color: var(--red); }
+.buy-up   .sig-action { color: var(--green); }
+.stay-out .sig-action { color: var(--gray); }
+.waiting  .sig-action { color: var(--vbright); }
+
+.sig-rule  { font-size: 11px; color: var(--white); margin-bottom: 3px; }
+.sig-stats { font-size: 11px; color: var(--gray); }
+.conf-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: bold;
+}
+.conf-badge.HIGH { background: var(--green); color: #000; }
+.conf-badge.LOW  { background: var(--yellow); color: #000; }
+
+/* ── Stat tiles ─────────────────────────────────────── */
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.tile {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px 6px;
+  text-align: center;
+}
+.tile-label { font-size: 9px; color: var(--dim); text-transform: uppercase; margin-bottom: 3px; }
+.tile-value { font-size: 16px; font-weight: bold; font-variant-numeric: tabular-nums; }
+.green  { color: var(--green); }
+.red    { color: var(--red); }
+.cyan   { color: var(--cyan); }
+.orange { color: var(--orange); }
+.violet { color: var(--vbright); }
+.gray   { color: var(--gray); }
+
+/* ── Tick log ───────────────────────────────────────── */
+.tick-header {
+  display: grid;
+  grid-template-columns: 36px 60px 60px 90px 68px 68px;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--dim);
+  text-transform: uppercase;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.tick-log {
+  max-height: 190px;
+  overflow-y: auto;
+}
+.tick-row {
+  display: grid;
+  grid-template-columns: 36px 60px 60px 90px 68px 68px;
+  gap: 4px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(30,30,48,0.4);
+  font-size: 11px;
+  align-items: center;
+}
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: var(--bg3); }
+::-webkit-scrollbar-thumb { background: var(--vbright); border-radius: 2px; }
+
+/* ── Charts ─────────────────────────────────────────── */
+#right-panel { display: flex; flex-direction: column; gap: 10px; }
+.chart-wrap { position: relative; }
+.chart-wrap canvas { display: block; }
+
+/* ── Bottom row ─────────────────────────────────────── */
+.bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+/* ── Macro items ────────────────────────────────────── */
+.macro-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.macro-row:last-child { border-bottom: none; }
+.macro-lbl { color: var(--gray); }
+.macro-val { font-weight: bold; }
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+.neu { color: var(--cyan); }
+
+/* ── Scorecard ──────────────────────────────────────── */
+.score-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.score-tile {
+  background: var(--bg3);
+  border-radius: 4px;
+  padding: 8px;
+  text-align: center;
+}
+.score-lbl  { font-size: 9px; color: var(--dim); text-transform: uppercase; margin-bottom: 3px; }
+.score-val  { font-size: 22px; font-weight: bold; }
+.winbar-wrap { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+.winbar-fill { height: 100%; background: linear-gradient(90deg, var(--green), #27ae60); border-radius: 3px; transition: width 0.5s; }
+.winbar-lbl  { font-size: 9px; color: var(--dim); text-align: center; margin-top: 4px; }
+
+/* ── History ────────────────────────────────────────── */
+.hist-list { max-height: 165px; overflow-y: auto; }
+.hist-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.hist-row:last-child { border-bottom: none; }
+.hist-win  { color: var(--green); }
+.hist-loss { color: var(--red); }
+
+/* ── Disconnected ───────────────────────────────────── */
+#offline-banner {
+  display: none;
+  position: fixed;
+  bottom: 12px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255,82,82,0.15);
+  border: 1px solid var(--red);
+  color: var(--red);
+  padding: 6px 20px;
+  border-radius: 20px;
+  font-size: 12px;
+  z-index: 999;
+}
+</style>
+</head>
+<body>
+
+<div id="offline-banner">⚠ Disconnected from bot — reconnecting...</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">▲ ARYA</div>
+  <div class="header-center">
+    <div class="btc-price" id="h-btc">$—</div>
+    <div class="btc-change" id="h-btc-chg">BTC / USDT</div>
+  </div>
+  <div class="header-right">
+    <div class="window-label" id="h-window">—</div>
+    <div class="status-line">
+      <span class="dot waiting" id="h-dot"></span>
+      <span id="h-status">Connecting...</span>
+    </div>
+  </div>
+</header>
+
+<!-- Progress bar -->
+<div class="progress-wrap">
+  <div class="progress-track">
+    <div class="progress-fill" id="prog-fill" style="width:0%"></div>
+  </div>
+  <div class="progress-labels">
+    <span class="mark" id="mark-s0">s0</span>
+    <span class="progress-second" id="prog-label">s— / 300</span>
+    <span class="countdown-pill" id="countdown-pill">—</span>
+    <span class="mark" id="mark-s283">s283 SELL</span>
+    <span class="mark">s300</span>
+  </div>
+</div>
+
+<!-- Main grid -->
+<div class="main">
+
+  <!-- LEFT: Signal + Tiles + Ticks -->
+  <div>
+    <div class="panel" style="margin-bottom:10px">
+      <div class="ptitle">Signal</div>
+
+      <div class="signal-box waiting" id="sig-box">
+        <div class="sig-action" id="sig-action">WAITING</div>
+        <div class="sig-rule"  id="sig-rule">—</div>
+        <div class="sig-stats" id="sig-stats">—</div>
+        <span class="conf-badge" id="sig-conf" style="display:none"></span>
+      </div>
+
+      <div class="tiles">
+        <div class="tile">
+          <div class="tile-label">Second</div>
+          <div class="tile-value cyan" id="t-sec">—</div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">Up ¢</div>
+          <div class="tile-value green" id="t-up">—</div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">Down ¢</div>
+          <div class="tile-value red" id="t-dn">—</div>
+        </div>
+      </div>
+      <div class="tiles">
+        <div class="tile">
+          <div class="tile-label">Up Δ</div>
+          <div class="tile-value" id="t-uslope" style="color:var(--gray)">—</div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">BTC Δ</div>
+          <div class="tile-value" id="t-bslope" style="color:var(--gray)">—</div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">Spread</div>
+          <div class="tile-value orange" id="t-spread">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle">Tick Log</div>
+      <div class="tick-header">
+        <span>s</span><span>Up ¢</span><span>Down ¢</span>
+        <span>BTC $</span><span>Up Δ</span><span>BTC Δ</span>
+      </div>
+      <div class="tick-log" id="tick-log">
+        <div style="color:var(--dim);text-align:center;padding:20px 0">Waiting for data...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Charts -->
+  <div id="right-panel">
+    <div class="panel">
+      <div class="ptitle">Up / Down Odds — by Second</div>
+      <div class="chart-wrap" style="height:260px">
+        <canvas id="odds-chart"></canvas>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">BTC Price — This Window</div>
+      <div class="chart-wrap" style="height:110px">
+        <canvas id="btc-chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom row -->
+<div class="bottom">
+
+  <!-- Macro -->
+  <div class="panel">
+    <div class="ptitle">Macro BTC Context</div>
+    <div class="macro-row">
+      <span class="macro-lbl">15-min trend</span>
+      <span class="macro-val" id="m-15m">—</span>
+    </div>
+    <div class="macro-row">
+      <span class="macro-lbl">30-min trend</span>
+      <span class="macro-val" id="m-30m">—</span>
+    </div>
+    <div class="macro-row">
+      <span class="macro-lbl">60-min trend</span>
+      <span class="macro-val" id="m-60m">—</span>
+    </div>
+    <div class="macro-row">
+      <span class="macro-lbl">vs 20-EMA (1m)</span>
+      <span class="macro-val" id="m-ema">—</span>
+    </div>
+    <div class="macro-row">
+      <span class="macro-lbl">BTC at open</span>
+      <span class="macro-val neu" id="m-s0">—</span>
+    </div>
+  </div>
+
+  <!-- Scorecard -->
+  <div class="panel">
+    <div class="ptitle">Session Scorecard</div>
+    <div class="score-grid">
+      <div class="score-tile">
+        <div class="score-lbl">Signals</div>
+        <div class="score-val cyan" id="sc-total">0</div>
+      </div>
+      <div class="score-tile">
+        <div class="score-lbl">Win Rate</div>
+        <div class="score-val green" id="sc-wr">—%</div>
+      </div>
+      <div class="score-tile">
+        <div class="score-lbl">Avg Profit</div>
+        <div class="score-val orange" id="sc-avg">—¢</div>
+      </div>
+      <div class="score-tile">
+        <div class="score-lbl">Total Profit</div>
+        <div class="score-val" id="sc-tot">—¢</div>
+      </div>
+    </div>
+    <div class="winbar-wrap">
+      <div class="winbar-fill" id="winbar" style="width:0%"></div>
+    </div>
+    <div class="winbar-lbl" id="winbar-lbl">No signals yet</div>
+  </div>
+
+  <!-- History -->
+  <div class="panel">
+    <div class="ptitle">Window History</div>
+    <div class="hist-list" id="hist-list">
+      <div style="color:var(--dim);text-align:center;padding:20px 0">No completed windows yet</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Chart init ────────────────────────────────────────────────
+const C = {
+  green: '#2ecc71', red: '#ff5252', orange: '#e8a020',
+  violet: '#b06bff', cyan: '#00d4ff', gray: '#444',
+};
+
+const oddsCtx = document.getElementById('odds-chart');
+const oddsChart = new Chart(oddsCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'Up ¢',   data: [], borderColor: C.green,  backgroundColor: 'rgba(46,204,113,0.06)', borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2 },
+      { label: 'Down ¢', data: [], borderColor: C.red,    backgroundColor: 'rgba(255,82,82,0.06)',  borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2 },
+      { label: '50¢',    data: [], borderColor: 'rgba(100,100,130,0.5)', borderWidth: 1, borderDash: [5,5], pointRadius: 0, fill: false },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 150 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: '#888', font: { family: 'Courier New', size: 11 }, boxWidth: 16 } },
+      tooltip: {
+        backgroundColor: '#14141f', borderColor: '#1e1e30', borderWidth: 1,
+        titleColor: '#aaa', bodyColor: '#fff',
+        callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1) ?? '—'}¢` }
+      }
+    },
+    scales: {
+      x: { ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 16 }, grid: { color: 'rgba(30,30,48,0.8)' } },
+      y: {
+        min: 0, max: 100,
+        ticks: { color: '#555', font: { size: 10 }, callback: v => v + '¢' },
+        grid: { color: 'rgba(30,30,48,0.8)' },
+      }
+    }
+  }
+});
+
+const btcCtx = document.getElementById('btc-chart');
+const btcChart = new Chart(btcCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{ label: 'BTC', data: [], borderColor: C.orange, backgroundColor: 'rgba(232,160,32,0.06)', borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.3 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 150 },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#14141f', borderColor: '#1e1e30', borderWidth: 1,
+        callbacks: { label: ctx => '$' + ctx.parsed.y?.toLocaleString() }
+      }
+    },
+    scales: {
+      x: { ticks: { color: '#555', font: { size: 9 }, maxTicksLimit: 10 }, grid: { color: 'rgba(30,30,48,0.8)' } },
+      y: { ticks: { color: '#555', font: { size: 9 }, callback: v => '$' + v.toLocaleString() }, grid: { color: 'rgba(30,30,48,0.8)' } }
+    }
+  }
+});
+
+// ── Helpers ───────────────────────────────────────────────────
+let prevWindowLabel = null;
+
+function fmtBtc(v) {
+  if (v == null) return '—';
+  return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtPct(v) {
+  if (v == null) return '—';
+  const n = Number(v);
+  return (n >= 0 ? '+' : '') + n.toFixed(3) + '%';
+}
+function pctClass(v) {
+  if (v == null) return 'neu';
+  return Number(v) >= 0 ? 'pos' : 'neg';
+}
+
+// ── Update ────────────────────────────────────────────────────
+function update(s) {
+  const { window: win, btc, ticks, signal, scorecard, status } = s;
+
+  // Header
+  document.getElementById('h-btc').textContent = fmtBtc(btc.current);
+  if (btc.s0 && btc.current) {
+    const d = btc.current - btc.s0;
+    const el = document.getElementById('h-btc-chg');
+    el.textContent = (d >= 0 ? '▲ +' : '▼ ') + d.toFixed(1) + ' this window';
+    el.style.color = d >= 0 ? C.green : C.red;
+  }
+  document.getElementById('h-window').textContent =
+    win.start_label ? `${win.start_label} – ${win.end_label}` : '—';
+
+  // Status dot
+  const dot = document.getElementById('h-dot');
+  dot.className = 'dot ' + status;
+  const statusMap = {
+    watching: 'Watching odds...', signal_fired: 'Signal fired!',
+    holding: 'Holding position', sell_now: 'SELL NOW!',
+    grading: 'Grading result', stayed_out: 'Stayed out',
+    waiting: 'Waiting for window', starting: 'Starting...',
+  };
+  document.getElementById('h-status').textContent = statusMap[status] || status;
+
+  // Progress bar
+  const sec = win.second || 0;
+  const pct = Math.min(100, (sec / 300) * 100);
+  document.getElementById('prog-fill').style.width = pct + '%';
+  document.getElementById('prog-label').textContent = `s${sec} / 300`;
+
+  // Countdown pill
+  const pill = document.getElementById('countdown-pill');
+  const buyS  = signal.buy_second  || 36;
+  const sellS = signal.sell_second || 150;
+  if (sec < buyS && signal.rule) {
+    pill.textContent = `BUY in ${buyS - sec}s`;
+    pill.className = 'countdown-pill buy';
+  } else if (sec >= buyS && sec < sellS && signal.rule) {
+    pill.textContent = `SELL in ${sellS - sec}s`;
+    pill.className = 'countdown-pill sell';
+  } else if (sec >= sellS && signal.rule) {
+    pill.textContent = 'Exiting window';
+    pill.className = 'countdown-pill';
+  } else if (!signal.rule && sec >= buyS) {
+    pill.textContent = 'No trade';
+    pill.className = 'countdown-pill';
+  } else {
+    pill.textContent = `Decision in ${(signal.rule_check || 60) - sec}s`;
+    pill.className = 'countdown-pill';
+  }
+
+  // Signal box
+  const box = document.getElementById('sig-box');
+  const act = signal.action || 'WAITING';
+  const cls = act === 'BUY DOWN' ? 'buy-down' : act === 'BUY UP' ? 'buy-up' : act === 'STAY OUT' ? 'stay-out' : 'waiting';
+  box.className = 'signal-box ' + cls;
+  document.getElementById('sig-action').textContent = act;
+  document.getElementById('sig-rule').textContent =
+    signal.rule ? `Rule ${signal.rule}: ${signal.rule_name}` : act === 'STAY OUT' ? 'No rule matched' : '—';
+  document.getElementById('sig-stats').textContent = signal.description || '—';
+  const conf = document.getElementById('sig-conf');
+  if (signal.confidence && signal.confidence !== '—') {
+    conf.textContent = signal.confidence + ' CONFIDENCE';
+    conf.className = 'conf-badge ' + signal.confidence;
+    conf.style.display = 'inline-block';
+  } else {
+    conf.style.display = 'none';
+  }
+
+  // Tiles
+  document.getElementById('t-sec').textContent = sec;
+  const lt = ticks.length > 0 ? ticks[ticks.length - 1] : null;
+  if (lt) {
+    document.getElementById('t-up').textContent   = lt.up   != null ? lt.up.toFixed(1)   : '—';
+    document.getElementById('t-dn').textContent   = lt.down != null ? lt.down.toFixed(1) : '—';
+    const uEl = document.getElementById('t-uslope');
+    const bEl = document.getElementById('t-bslope');
+    uEl.textContent = lt.up_slope != null ? (lt.up_slope >= 0 ? '+' : '') + lt.up_slope.toFixed(1) + '¢' : '—';
+    uEl.style.color = (lt.up_slope || 0) >= 0 ? C.green : C.red;
+    bEl.textContent = lt.btc_slope != null ? (lt.btc_slope >= 0 ? '+$' : '-$') + Math.abs(lt.btc_slope).toFixed(0) : '—';
+    bEl.style.color = (lt.btc_slope || 0) >= 0 ? C.green : C.red;
+    const spread = lt.up != null && lt.down != null ? (lt.up - lt.down) : null;
+    document.getElementById('t-spread').textContent = spread != null ? spread.toFixed(1) + '¢' : '—';
+  }
+
+  // Charts — reset on new window
+  if (prevWindowLabel !== win.start_label) {
+    prevWindowLabel = win.start_label;
+    oddsChart.data.labels = [];
+    oddsChart.data.datasets.forEach(d => d.data = []);
+    btcChart.data.labels = [];
+    btcChart.data.datasets[0].data = [];
+  }
+  if (ticks.length > 0) {
+    oddsChart.data.labels          = ticks.map(t => `s${t.second}`);
+    oddsChart.data.datasets[0].data = ticks.map(t => t.up);
+    oddsChart.data.datasets[1].data = ticks.map(t => t.down);
+    oddsChart.data.datasets[2].data = ticks.map(() => 50);
+    oddsChart.update('none');
+    btcChart.data.labels           = ticks.map(t => `s${t.second}`);
+    btcChart.data.datasets[0].data = ticks.map(t => t.btc);
+    btcChart.update('none');
+  }
+
+  // Tick log (latest first, max 30)
+  const logEl = document.getElementById('tick-log');
+  if (ticks.length > 0) {
+    logEl.innerHTML = [...ticks].reverse().slice(0, 30).map(t => {
+      const uc = (t.up_slope || 0) >= 0 ? C.green : C.red;
+      const bc = (t.btc_slope || 0) >= 0 ? C.green : C.red;
+      return `<div class="tick-row">
+        <span style="color:var(--dim)">s${t.second}</span>
+        <span class="green">${t.up   != null ? t.up.toFixed(1)   + '¢' : '—'}</span>
+        <span class="red"  >${t.down != null ? t.down.toFixed(1) + '¢' : '—'}</span>
+        <span class="orange">${t.btc  != null ? '$' + Math.round(t.btc).toLocaleString() : '—'}</span>
+        <span style="color:${uc}">${t.up_slope  != null ? (t.up_slope  >= 0 ? '+' : '') + t.up_slope.toFixed(1)  + '¢' : '—'}</span>
+        <span style="color:${bc}">${t.btc_slope != null ? (t.btc_slope >= 0 ? '+$' : '-$') + Math.abs(t.btc_slope).toFixed(0) : '—'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Macro
+  const macro = btc.macro || {};
+  [['m-15m','pct_15m'],['m-30m','pct_30m'],['m-60m','pct_60m']].forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    const v  = macro[key];
+    el.textContent  = fmtPct(v);
+    el.className    = 'macro-val ' + pctClass(v);
+  });
+  const emaEl = document.getElementById('m-ema');
+  if (macro.above_ema20 != null) {
+    emaEl.textContent = macro.above_ema20 ? 'ABOVE ▲' : 'BELOW ▼';
+    emaEl.className   = 'macro-val ' + (macro.above_ema20 ? 'pos' : 'neg');
+  }
+  document.getElementById('m-s0').textContent = fmtBtc(btc.s0);
+
+  // Scorecard
+  const sc = scorecard;
+  document.getElementById('sc-total').textContent = sc.total;
+  document.getElementById('sc-wr').textContent = sc.total > 0 ? sc.win_rate.toFixed(1) + '%' : '—%';
+  const avgEl = document.getElementById('sc-avg');
+  avgEl.textContent = sc.total > 0 ? (sc.avg_profit >= 0 ? '+' : '') + sc.avg_profit.toFixed(1) + '¢' : '—¢';
+  avgEl.className = 'score-val ' + (sc.avg_profit >= 0 ? 'green' : 'red');
+  const totEl = document.getElementById('sc-tot');
+  totEl.textContent = sc.total > 0 ? (sc.total_profit >= 0 ? '+' : '') + sc.total_profit.toFixed(1) + '¢' : '—¢';
+  totEl.className = 'score-val ' + (sc.total_profit >= 0 ? 'green' : 'red');
+  const wr = sc.total > 0 ? sc.win_rate : 0;
+  document.getElementById('winbar').style.width = wr + '%';
+  document.getElementById('winbar-lbl').textContent =
+    sc.total > 0 ? `${sc.wins} wins / ${sc.total} signals` : 'No signals yet';
+
+  // History
+  const hist = sc.history || [];
+  const histEl = document.getElementById('hist-list');
+  if (hist.length > 0) {
+    histEl.innerHTML = [...hist].reverse().map(h => {
+      const cls = h.correct ? 'hist-win' : 'hist-loss';
+      const icon = h.correct ? '✓' : '✗';
+      const pc = h.profit >= 0 ? C.green : C.red;
+      return `<div class="hist-row">
+        <span class="${cls}">${icon} ${h.window}</span>
+        <span style="color:var(--dim)">R${h.rule}</span>
+        <span style="color:${pc};font-weight:bold">${h.profit >= 0 ? '+' : ''}${h.profit.toFixed(1)}¢</span>
+      </div>`;
+    }).join('');
+  }
+}
+
+// ── Poll ──────────────────────────────────────────────────────
+let failCount = 0;
+async function poll() {
+  try {
+    const r = await fetch('/api/state', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    update(data);
+    failCount = 0;
+    document.getElementById('offline-banner').style.display = 'none';
+  } catch (e) {
+    failCount++;
+    if (failCount >= 3) {
+      document.getElementById('offline-banner').style.display = 'block';
+    }
+  }
+  setTimeout(poll, 800);
+}
+poll();
+</script>
+</body>
+</html>

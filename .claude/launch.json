@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "architecture",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5050", "--directory", "/Users/aryanazari/Desktop/Bitcoin polymarket"],
+      "port": 5050
+    }
+  ]
+}
